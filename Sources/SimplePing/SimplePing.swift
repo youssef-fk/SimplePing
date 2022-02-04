@@ -58,7 +58,7 @@ public struct ICMPv6Type {
     public static let EchoRequest: UInt8 = 128  // code is always 0
 }
 
-public protocol PingDelegate: AnyObject {
+public protocol SimplePingDelegate: AnyObject {
     func pinger(_ pinger: Ping, didStartWithAddress address: String)
     func pinger(_ pinger: Ping, didFailWithError error: Error)
     func pinger(_ pinger: Ping, didSendPacket packet: Data, sequence: UInt16)
@@ -69,7 +69,7 @@ public protocol PingDelegate: AnyObject {
 
 public protocol Ping {
     var hostName: String { get }
-    var delegate: PingDelegate? { get set }
+    var delegate: SimplePingDelegate? { get set }
     var hostAddress: Data? { get }
     var hostAddressFamily: sa_family_t { get }
     var identifier: UInt16 { get }
@@ -154,7 +154,7 @@ public class SimplePing: Ping {
     }
     
     public var hostName: String
-    public weak var delegate: PingDelegate?
+    public weak var delegate: SimplePingDelegate?
     public var hostAddress: Data?
     public var identifier: UInt16
     public var nextSequenceNumber: UInt16
