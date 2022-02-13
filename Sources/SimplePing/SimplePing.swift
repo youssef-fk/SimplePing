@@ -27,7 +27,7 @@ extension Data {
         }
     }
     
-    func srcAddr() -> String? {
+    public func srcAddress() -> String? {
         var ipPtr: IPHeader? = nil
         var msg: String?
 
@@ -96,7 +96,9 @@ public protocol Ping {
     
     func start()
     func stop()
+    
     func sendPing(_ data: Data?)
+    func setTTL(_ ttl: Int)
 }
 
 fileprivate func checksum(_ buf: UnsafeRawPointer, _ bufLen: Int) -> UInt16 {
