@@ -296,19 +296,19 @@ public class SimplePing: Ping {
         }
     }
     
-    func setTimeout(_ sec: Int) {
+    public func setTTL(_ ttl: Int) {
+        var internalTtl = ttl
+        setTimeout(3)
+        setsockopt(CFSocketGetNative(self._socket), IPPROTO_IP, IP_TTL, &internalTtl, socklen_t(MemoryLayout.size(ofValue: internalTtl)))
+    }
+    
+    private func setTimeout(_ sec: Int) {
         var tv = timeval()
         tv.tv_sec = sec
         tv.tv_usec = 0 //1000000 * sec; // 0.1 sec
         setsockopt(CFSocketGetNative(self._socket), SOL_SOCKET, SO_SNDTIMEO, &tv, socklen_t(MemoryLayout.size(ofValue: tv)))
         let ret = setsockopt(CFSocketGetNative(self._socket), SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout.size(ofValue: tv)))
         print("set recv timeout \(ret) err \(errno)")
-    }
-    
-    func setTTL(_ ttl: Int) {
-        var internalTtl = ttl
-        setTimeout(3)
-        setsockopt(CFSocketGetNative(self._socket), IPPROTO_IP, IP_TTL, &internalTtl, socklen_t(MemoryLayout.size(ofValue: internalTtl)))
     }
     
     private func didFailWithError(_ error: Error) {
