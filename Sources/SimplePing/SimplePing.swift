@@ -15,11 +15,30 @@ public extension Data {
 
 extension Data {
     public func to<T>(_ type: T.Type) -> T {
-        return self.withUnsafeBytes { UnsafeRawPointer($0).assumingMemoryBound(to: type).pointee }
+        return self.withUnsafeBytes { (body: UnsafeRawBufferPointer) in
+            body.baseAddress!.assumingMemoryBound(to: T.self).pointee
+        }
     }
     
     public var unsafeBytes: UnsafeRawPointer {
-        return self.withUnsafeBytes { UnsafeRawPointer($0) }
+        return self.withUnsafeBytes { (body: UnsafeRawBufferPointer) in
+            let bufferPointer = body.baseAddress!.assumingMemoryBound(to: UInt8.self)
+            return UnsafeRawPointer(bufferPointer)
+        }
+    }
+    
+    func srcAddr() -> String? {
+        var ipPtr: IPHeader? = nil
+        var msg: String?
+
+        if (self.count) >= (MemoryLayout<IPHeader>.size + MemoryLayout<ICMPHeader>.size) {
+            ipPtr = self.to(IPHeader.self)
+            if let sourceAddress = ipPtr?.sourceAddress.0, let aSourceAddress = ipPtr?.sourceAddress.1, let aASourceAddress = ipPtr?.sourceAddress.2, let aAASourceAddress = ipPtr?.sourceAddress.3 {
+                msg = "\(sourceAddress).\(aSourceAddress).\(aASourceAddress).\(aAASourceAddress)"
+            }
+        }
+        
+        return msg
     }
 }
 
@@ -77,7 +96,7 @@ public protocol Ping {
     
     func start()
     func stop()
-    func sendPingWithData(_ data: Data?)
+    func sendPing(_ data: Data?)
 }
 
 fileprivate func checksum(_ buf: UnsafeRawPointer, _ bufLen: Int) -> UInt16 {
@@ -210,7 +229,7 @@ public class SimplePing: Ping {
         self.hostAddress = nil
     }
     
-    public func sendPingWithData(_ data: Data?) {
+    public func sendPing(_ data: Data? = nil) {
         guard let hostAddress = self.hostAddress else {
             print("Host address is nil")
             return
@@ -232,18 +251,22 @@ public class SimplePing: Ping {
             fatalError("hostAddressFamily has incorrect value")
         }
         
+        let repatCount = data == nil ? 3 : 1
         var bytesSent = 0
         var err: Int32 = 0
         if self._socket == nil {
             bytesSent = -1
             err = EBADF
         } else {
-            bytesSent = sendto(CFSocketGetNative(self._socket),
-                               packet.unsafeBytes,
-                               packet.count,
-                               0,
-                               hostAddress.unsafeBytes.assumingMemoryBound(to: sockaddr.self),
-                               socklen_t(hostAddress.count))
+            for _ in 0..<repatCount {
+                bytesSent = sendto(CFSocketGetNative(self._socket),
+                                   packet.unsafeBytes,
+                                   packet.count,
+                                   0,
+                                   hostAddress.unsafeBytes.assumingMemoryBound(to: sockaddr.self),
+                                   socklen_t(hostAddress.count))
+            }
+            
             err = 0
             if bytesSent < 0 {
                 err = errno
@@ -269,6 +292,21 @@ public class SimplePing: Ping {
             sequenceOverflowFlag = true
             nextSequenceNumber = 0
         }
+    }
+    
+    func setTimeout(_ sec: Int) {
+        var tv = timeval()
+        tv.tv_sec = sec
+        tv.tv_usec = 0 //1000000 * sec; // 0.1 sec
+        setsockopt(CFSocketGetNative(self._socket), SOL_SOCKET, SO_SNDTIMEO, &tv, socklen_t(MemoryLayout.size(ofValue: tv)))
+        let ret = setsockopt(CFSocketGetNative(self._socket), SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout.size(ofValue: tv)))
+        print("set recv timeout \(ret) err \(errno)")
+    }
+    
+    func setTTL(_ ttl: Int) {
+        var internalTtl = ttl
+        setTimeout(3)
+        setsockopt(CFSocketGetNative(self._socket), IPPROTO_IP, IP_TTL, &internalTtl, socklen_t(MemoryLayout.size(ofValue: internalTtl)))
     }
     
     private func didFailWithError(_ error: Error) {
@@ -585,7 +623,6 @@ public class SimplePing: Ping {
         }
         
         CFHostCancelInfoResolution(host, .addresses)
-        //        Unmanaged.passUnretained(host).release()
         
         if success {
             self.startwithHostAddress()
